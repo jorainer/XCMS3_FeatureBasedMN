@@ -127,14 +127,16 @@ processed_Data <- fillChromPeaks(processedData,
 
 Below we use the `featureSpectra` function to extract all MS2 spectra with their
 precursor m/z being within the m/z range of a feature/peak and their retention
-time within the rt range of the same feature/peak. Zero-intensity
+time within the rt range of the same feature/peak. Note that for older `xcms`
+versions (i.e. before version 3.12) `return.type = "Spectra"` has to be used
+instead of `return.type = "MSpectra"` as in the example below. Zero-intensity
 values are removed from each spectrum with the `clean` function, and
 subsequently processed into the expected format using the `formatSpectraForGNPS`
 function.
 
 ```{r}
 ## export the individual spectra into a .mgf file
-filteredMs2Spectra <- featureSpectra(processedData, return.type = "Spectra")
+filteredMs2Spectra <- featureSpectra(processedData, return.type = "MSpectra")
 filteredMs2Spectra <- clean(filteredMs2Spectra, all = TRUE)
 filteredMs2Spectra <- formatSpectraForGNPS(filteredMs2Spectra)
 ```
