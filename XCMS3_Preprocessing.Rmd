@@ -134,16 +134,20 @@ processedData <- groupChromPeaks(processedData, param = pdp)
 
 Fill-in missing peaks. Peak detection might have failed for some features in
 some samples. The `fillChromPeaks` function allows to integrate for such cases
-all signal in the respective m/z - retention time range. Below we first define
-the median width of identified chromatographic peaks in retention time dimension
-and use this as parameter `fixedRt` for the `fillChromPeaks`.
+all signal in the respective m/z - retention time range. `xcms` supports two
+different approaches to define the region from which signal should be retrieved
+for gap filling: the original version (`FillChromPeaksParam`) integrates signal
+from the apex position of detected chromatographic peaks, allowing to extend
+that by a constant value in rt and m/z dimension. This approach
+however generally underestimates the *real* signal. The newer
+`ChromPeakAreaParam` approach defines the m/z-rt region for each individual
+feature separately, considering the m/z and retention time ranges of all
+detected chromatographic peaks for that feature. Below we use thus this gap
+filling method.
 
 ```{r, message = FALSE, warning = FALSE}
-medWidth <- median(chromPeaks(processedData)[, "rtmax"] -
-                   chromPeaks(processedData)[, "rtmin"])
 ## fill missing peaks
-processed_Data <- fillChromPeaks(
-    processedData, param = FillChromPeaksParam(fixedRt = medWidth))
+processed_Data <- fillChromPeaks(processedData, param = ChromPeakAreaParam())
 ```
 
 ### Export data
@@ -221,13 +225,16 @@ spectra and specify with `fcol = "feature_id"` how the spectra are grouped
 of spectra of the same feature we apply the `maxTic` function that simply
 returns the spectrum with the largest sum of intensities. We thus select with
 the code below the spectrum with the largest total signal as the
-*representative* MS2 spectrum for each feature.
+*representative* MS2 spectrum for each feature. We're specifically calling the
+`combineSpectra` method from the `MSnbase` package because also the `Spectra` R
+package would provide one, which has however different parameters.
 
 ```{r}
 ## Select for each feature the Spectrum2 with the largest TIC.
-filteredMs2Spectra_maxTic <- combineSpectra(filteredMs2Spectra,
-                                            fcol = "feature_id",
-                                            method = maxTic)
+filteredMs2Spectra_maxTic <- MSnbase::combineSpectra(
+                                          filteredMs2Spectra,
+                                          fcol = "feature_id",
+                                          method = maxTic)
 ```
 
 Next we export the data to a file which can then be submitted to GNPS [feature-based
@@ -254,7 +261,8 @@ head(filteredDataTable)
 ```
 
 ```{r}
-write.table(filteredDataTable, "xcms_onlyMS2.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+write.table(filteredDataTable, "xcms_onlyMS2.txt", sep = "\t",
+            quote = FALSE, row.names = FALSE)
 ```
 
 #### Export MS2 consensus spectra
@@ -282,7 +290,7 @@ For more details see the documentation of the
 function in the MSnbase R package.
 
 ```{r, message = FALSE, warning = FALSE}
-filteredMs2Spectra_consensus <- combineSpectra(
+filteredMs2Spectra_consensus <- MSnbase::combineSpectra(
     filteredMs2Spectra, fcol = "feature_id", method = consensusSpectrum,
     mzd = 0, minProp = 0.8, ppm = 10)
 
