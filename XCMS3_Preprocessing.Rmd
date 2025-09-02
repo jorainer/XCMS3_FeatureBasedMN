@@ -1,31 +1,37 @@
 ## Install required packages
 
-Note: This script is optimized for the latest R version (>3.6). Be sure to get
-the most recent version of R before running. The code below installs the
-required packages and all needed dependencies. Note: You don't have to run this
-chunk if the packages are already installed.
+Note: This script is optimized for the latest R version (>=4.5) and *xcms*
+version (>= 4.6). Be sure to get the most recent version of R before
+running. The code below installs the required packages and all needed
+dependencies. Note: You don't have to run this chunk if the packages are already
+installed.
 
 ```{r, eval = FALSE, message = FALSE}
 if (!requireNamespace("BiocManager"))
     install.packages("BiocManager")
-BiocManager::install(c("xcms", "CAMERA"))
+BiocManager::install(c("xcms", "CAMERA", "Spectra",
+                       "MsExperiment", "MsBackendMgf"))
 ```
 
-## Preprocess your data using XCMS3 and export data files for feature-based molecular networking through GNPS
+## Preprocess your data using *xcms* and export data files for feature-based molecular networking through GNPS
 
 To follow this example tutorial, download the folder named
 *peak/AMG_Plant_subset* from:
 [here](https://massive.ucsd.edu/ProteoSAFe/dataset.jsp?task=de2d18fd91804785bce8c225cc94a444)
 
-Note that the settings for `xcms` used in this tutorial were not optimized,
+Note that the settings for *xcms* used in this tutorial were not optimized,
 specifically the alignment based on the default *obiwarp* parameters might
-perform a little to strong retention time adjustment.
-For more information on optimization of the parameters see the [xcms vignette](https://bioconductor.org/packages/release/bioc/vignettes/xcms/inst/doc/xcms.html)
-or the [LC-MS data pre-processing with xcms](https://github.com/jorainer/metabolomics2018) workshop.
+perform a little to strong retention time adjustment.  For more information on
+optimization of the parameters see the [xcms
+vignette](https://bioconductor.org/packages/release/bioc/vignettes/xcms/inst/doc/xcms.html)
+or the [Metabonaut
+tutorials](https://rformassspectrometry.github.io/Metabonaut/).
 
 Load required libraries and utility functions for GNPS export.
 
 ```{r, message = FALSE}
+library(MsExperiment)
+library(Spectra)
 library(xcms)
 source("https://raw.githubusercontent.com/jorainer/xcms-gnps-tools/master/customFunctions.R")
 ```
@@ -53,15 +59,17 @@ we assign all samples to the same group. This should be changed according to the
 experimental setup.
 
 ```{r}
-mzMLfiles <- paste0('AMG_Plant_subset/',
-                    list.files(path = 'AMG_Plant_subset/',
-                               pattern = ".mzXML$", recursive = TRUE))
-s_groups <- rep("sample", length(mzMLfiles))
+mzxml_files <- dir("AMG_Plant_subset/", pattern = ".mzXML",
+                   full.names = TRUE, recursive = TRUE)
 pheno <- data.frame(
-    sample_name = sub(basename(mzMLfiles),
-                      pattern = ".mzML",replacement = "", fixed = TRUE),
-    sample_group = s_groups, stringsAsFactors = FALSE)
+    sample_name = sub(basename(mzxml_files), pattern = ".mzXML",
+                      replacement = "", fixed = TRUE),
+    sample_group = rep("sample", length(mzxml_files)))
+
 ```
+
+The first 6 lines of this `data.frame` describing the experiment, respectively
+files is shown below.
 
 ```{r}
 head(pheno)
@@ -70,21 +78,22 @@ head(pheno)
 Read all raw data (which includes MS1 and MS2 spectra).
 
 ```{r}
-rawData <- readMSData(mzMLfiles, centroided. = TRUE, mode = "onDisk",
-                      pdata = new("NAnnotatedDataFrame", pheno))
+rawData <- readMsExperiment(mzxml_files, sampleData = pheno)
+
 ```
 
 Create a base peak chromatogram (BPC) for visual inspection.
 
-```{r, fig.width = 12, fig.height = 6, fig.cap = "Base peak chromatogram."}
+```{r, fig.width = 12, fig.height = 6, fig.cap = "Base peak chromatogram.", message = FALSE}
 bpis <- chromatogram(rawData, aggregationFun = "max")
 plot(bpis)
 ```
 
-### Peak picking
+### Chromatographic peak detection
 
-Define settings for the centWave peak detection. As mentioned in the
-introduction, these settings should always be adapted to the analyzed data set.
+Define settings for the *centWave* chromatographic peak detection algorithm. As
+mentioned in the introduction, these settings should always be adapted to the
+analyzed data set.
 
 ```{r}
 cwp <- CentWaveParam(snthresh = 5, noise = 1000, peakwidth = c(3, 30), ppm = 20)
@@ -118,14 +127,13 @@ Plot the difference between adjusted and raw retention times.
 plotAdjustedRtime(processedData)
 ```
 
-
-### Peak grouping
+### Peak grouping (correspondence analysis)
 
 Define the parameters for the *peak density*-based peak grouping (correspondence
 analysis).
 
 ```{r, message = FALSE, warning = FALSE}
-pdp <- PeakDensityParam(sampleGroups = processedData$sample_group,
+pdp <- PeakDensityParam(sampleGroups = sampleData(processedData)$sample_group,
                         minFraction = 0.10)
 processedData <- groupChromPeaks(processedData, param = pdp) 
 ```
@@ -133,8 +141,8 @@ processedData <- groupChromPeaks(processedData, param = pdp)
 ### Gap filling
 
 Fill-in missing peaks. Peak detection might have failed for some features in
-some samples. The `fillChromPeaks` function allows to integrate for such cases
-all signal in the respective m/z - retention time range. `xcms` supports two
+some samples. The `fillChromPeaks()` function allows to integrate for such cases
+all signal in the respective m/z - retention time range. *xcms* supports two
 different approaches to define the region from which signal should be retrieved
 for gap filling: the original version (`FillChromPeaksParam`) integrates signal
 from the apex position of detected chromatographic peaks, allowing to extend
@@ -152,22 +160,23 @@ processed_Data <- fillChromPeaks(processedData, param = ChromPeakAreaParam())
 
 ### Export data
 
-#### export MS1 and MS2 features
+#### Export MS1 feature abundances and related MS2 spectra
 
-Below we use the `featureSpectra` function to extract all MS2 spectra with their
-precursor m/z being within the m/z range of a feature/peak and their retention
-time within the rt range of the same feature/peak. Note that for older `xcms`
-versions (i.e. before version 3.12) `return.type = "Spectra"` has to be used
-instead of `return.type = "MSpectra"` as in the example below. Zero-intensity
-values are removed from each spectrum with the `clean` function, and
-subsequently processed into the expected format using the `formatSpectraForGNPS`
-function.
+Below we use the `featureSpectra()` function to extract all MS2 spectra with
+their precursor m/z being within the m/z range of a feature/peak and their
+retention time within the rt range of the same feature/peak. Zero intensity
+peaks are then removed from each spectrum using the `filterIntensity()` function
+and empty spectra (i.e., MS2 spectra without fragment peaks) with the
+`filterEmptySpectra()` function. At last, the `formatSpectraForGNPS()` function
+from the [xcms-gnps-tools](https://github.com/jorainer/xcms-gnps-tools)
+repository is called to replace the acquisition number of the spectra with an
+index representing the feature ID.
 
 ```{r}
-## export the individual spectra into a .mgf file
-filteredMs2Spectra <- featureSpectra(processedData, return.type = "MSpectra")
-filteredMs2Spectra <- clean(filteredMs2Spectra, all = TRUE)
-filteredMs2Spectra <- formatSpectraForGNPS(filteredMs2Spectra)
+feature_ms2 <- featureSpectra(processedData, return.type = "Spectra")
+feature_ms2 <- filterIntensity(feature_ms2, intensity = 0)
+feature_ms2 <- filterEmptySpectra(feature_ms2)
+feature_ms2 <- formatSpectraForGNPS(feature_ms2)
 ```
 
 The extracted MS2 spectra are saved as *ms2spectra_all.mgf* file. This file can
@@ -175,16 +184,18 @@ for example be used to do *in silico* structure prediction through
 [SIRIUS+CSI:FingerID](https://bio.informatik.uni-jena.de/software/sirius/).
 
 ```{r}
-writeMgfData(filteredMs2Spectra, "ms2spectra_all.mgf")
+library(MsBackendMgf)
+export(backend = MsBackendMgf(),
+       feature_ms2, file = "ms2spectra_all.mgf")
 ```
 
 Export peak area quantification table. To this end we first extract the *feature
 definitions* (i.e. the m/z and retention time ranges and other metadata for all
 defined features in the data set) and then the integrated peak areas (with the
-`featureValues` function). This peak area quantification table contains features
-and respective per sample peak areas in columns. The combined data is then saved
-to the file *xcms_all.txt*. Note that it is now also possible to use the entire
-feature table in the FBMN workflow.
+`featureValues()` function). This peak area quantification table contains
+features and respective per sample peak areas in columns. The combined data is
+then saved to the file *xcms_all.txt*. Note that it is now also possible to use
+the entire feature table in the FBMN workflow.
 
 ```{r}
 ## get feature definitions and intensities
@@ -194,6 +205,7 @@ featuresIntensities <- featureValues(processedData, value = "into")
 ## generate data table
 dataTable <- merge(featuresDef, featuresIntensities, by = 0, all = TRUE)
 dataTable <- dataTable[, !(colnames(dataTable) %in% c("peakidx"))]
+colnames(dataTable)[1L] <- "feature_id"
 ```
 
 ```{r}
@@ -205,36 +217,43 @@ write.table(dataTable, "xcms_all.txt", sep = "\t", quote = FALSE,
             row.names = FALSE)
 ```
 
+#### Export data for features with available MS2 spectra
 
-#### Export MS2 features only
-
-The `filteredMs2Spectra` contains all MS2 spectra with their precursor m/z
+The `feature_ms2` contains all MS2 spectra with their precursor m/z
 within the feature's m/z range and a retention time that is within the retention
 time of the chromatographic peak/feature. We thus have multiple MS2 spectra for
-each feature (also from each sample). Metadata column `"feature_id"` indicates
+each feature (also from each sample). Metadata column `"FEATURE_ID"` indicates
 to which feature a MS2 spectrum belongs:
 
 ```{r}
-filteredMs2Spectra
+head(feature_ms2$FEATURE_ID)
 ```
 
 We next select a single MS2 spectrum for each feature and export this reduced
-set also as an .mgf file. We use the `combineSpectra` function on the list of
-spectra and specify with `fcol = "feature_id"` how the spectra are grouped
-(i.e. all spectra with the same feature id are processed together). On the set
-of spectra of the same feature we apply the `maxTic` function that simply
-returns the spectrum with the largest sum of intensities. We thus select with
-the code below the spectrum with the largest total signal as the
-*representative* MS2 spectrum for each feature. We're specifically calling the
-`combineSpectra` method from the `MSnbase` package because also the `Spectra` R
-package would provide one, which has however different parameters.
+set also as an .mgf file. We use the `Spectra::combineSpectra()` function to
+*combine* spectra with the same value for parameter `f` into one. In the example
+below we use the `maxTicPeaksData()` function from the
+[xcms-gnps-tools](https://github.com/jorainer/xcms-gnps-tools) repository to
+report for each feature only the fragment peaks matrix with the largest TIC. As
+an alternative, the `combineSpectra()` method would also allow to create a
+*representative* spectrum combining all fragment peaks or reporting fragment
+peaks present in e.g. 80% of related fragment spectra (see next section for an
+example). The sets of fragment spectra assigned to a feature have to be declared
+with parameter `f` (which in our example is set to `f =
+feature_ms2$FEATURE_ID`, defining for each spectrum the feature it is
+related to). In addition, we have to change parameter `p` (which defines how to
+split and process the `Spectra` object in parallel) from the default `p =
+dataStorage(object)` to `p = rep(1, length(feature_ms2))` hence switching
+from a per-mzML-file-based processing to a processing that allows to select a
+single representative fragment spectrum for feature across all data files.
 
-```{r}
+```{r, message = FALSE}
 ## Select for each feature the Spectrum2 with the largest TIC.
-filteredMs2Spectra_maxTic <- MSnbase::combineSpectra(
-                                          filteredMs2Spectra,
-                                          fcol = "feature_id",
-                                          method = maxTic)
+feature_ms2_maxtic <- combineSpectra(
+    feature_ms2, f = feature_ms2$FEATURE_ID,
+    p = rep(1, length(feature_ms2)), FUN = maxTicPeaksData)
+spectraNames(feature_ms2_maxtic) <- paste0(
+    feature_ms2_maxtic$FEATURE_ID, " maxTic")
 ```
 
 Next we export the data to a file which can then be submitted to GNPS [feature-based
@@ -242,7 +261,8 @@ molecular
 networking](https://ccms-ucsd.github.io/GNPSDocumentation/featurebasedmolecularnetworking/).
 
 ```{r}
-writeMgfData(filteredMs2Spectra_maxTic, "ms2spectra_maxTic.mgf")
+export(backend = MsBackendMgf(),
+       feature_ms2_maxtic, file = "ms2spectra_maxTic.mgf")
 ```
 
 At last we subset the peak area quantification table to features for which we
@@ -253,7 +273,7 @@ networking](https://ccms-ucsd.github.io/GNPSDocumentation/featurebasedmolecularn
 ```{r}
 ## filter data table to contain only peaks with MSMS DF[ , !(names(DF) %in% drops)]
 filteredDataTable <- dataTable[which(
-    dataTable$Row.names %in% filteredMs2Spectra@elementMetadata$feature_id),]
+    dataTable$feature_id %in% feature_ms2_maxtic$FEATURE_ID),]
 ```
 
 ```{r}
@@ -271,30 +291,23 @@ Alternatively, instead of selecting the spectrum with the largest total signal
 as representative MS2 spectrum for each feature, we can create a *consensus MS2
 spectrum*. A consensus MS2 spectrum can for example be created by combining all
 MS2 spectra for a feature into a single spectrum that contains peaks present in
-the majority of spectra. Note however that this feature is experimental at
-present.
-
-To this end we can use the `consensusSpectrum` function in combination with the
-`combineSpectra` function. The parameter `minProp` defines the mimimal
-proportion of spectra in which a peak has to be present in order for it to be
-added to the consensus spectrum (0.8 -> 80% of spectra). The parameters `mzd`
-and `ppm` allow to define how to group peaks between spectra with `mzd` being a
-fixed, constant value and all peaks between spectra with a difference in their
-m/z < `mzd` are combined into the final mass peak in the consensus
-spectrum. Finally, the parameter `ppm` allows to perform an m/z dependent
-grouping of mass peaks, i.e. mass peaks with a difference in their m/z smaller
-than `ppm` are combined.
-
-For more details see the documentation of the
-[consensusSpectrum](https://rdrr.io/bioc/MSnbase/man/consensusSpectrum.html)
-function in the MSnbase R package.
+the majority of spectra. For this we set parameters `ppm = 10`, `peaks =
+"intersect"` and `minProp = 0.5` in the `Spectra::combineSpectra()` function:
+all fragment peaks in all MS2 spectra of a feature with a similar *m/z* (based
+on parameter `ppm`) that are present in >= `minProp` of the related MS2 spectra
+are reported in the final *consensus* spectrum.
 
 ```{r, message = FALSE, warning = FALSE}
-filteredMs2Spectra_consensus <- MSnbase::combineSpectra(
-    filteredMs2Spectra, fcol = "feature_id", method = consensusSpectrum,
-    mzd = 0, minProp = 0.8, ppm = 10)
+feature_ms2_consensus <- combineSpectra(
+    feature_ms2, f = feature_ms2$FEATURE_ID, p = rep(1, length(feature_ms2)),
+    ppm = 10, peaks = "intersect", minProp = 0.5)
+spectraNames(feature_ms2_consensus) <- paste0(
+    feature_ms2_maxtic$FEATURE_ID, " consensus")
+#' get rid of empty spectra
+feature_ms2_consensus <- filterEmptySpectra(feature_ms2_consensus)
 
-writeMgfData(filteredMs2Spectra_consensus, "ms2spectra_consensus.mgf")
+export(backend = MsBackendMgf(),
+       feature_ms2_consensus, file = "ms2spectra_consensus.mgf")
 ```
 
 Analogously we subset the peak area quantification table to features for which
@@ -303,8 +316,8 @@ file. This file can be submitted to GNPS [feature-based molecular
 networking](https://ccms-ucsd.github.io/GNPSDocumentation/featurebasedmolecularnetworking/):
 
 ```{r}
-consensusDataTable <- dataTable[which(dataTable$Row.names %in%
-                                      filteredMs2Spectra_consensus@elementMetadata$feature_id),]
+consensusDataTable <- dataTable[which(dataTable$feature_id %in%
+                                      feature_ms2_consensus$FEATURE_ID),]
 head(consensusDataTable)
 ```
 
@@ -316,17 +329,17 @@ write.table(consensusDataTable, "xcms_consensusMS2.txt",
 ### CAMERA annotation of adducts and isotopes
 
 The code in this section describes how the data can be processed to enable the
-ion identify networking (IIN) in FBMN. In brief, we are using the `CAMERA`
+ion identify networking (IIN) in FBMN. In brief, we are using the *CAMERA*
 package to determine which features might be adducts or isotopes of the same
 compound. This information is exported as an additional *edges* file and is
 added to the feature annotation..
 
 Note: the CAMERA package supports objects of class `xcmsSet`, which were the
-outputs of the *old* version of xcms. The newer `XCMSnExp` object can however be
-converted to an `xcmsSet` object with the `as(object, "xcmsSet")`, which does
-however not support conversion of objects with MS level > 1 data. Thus we use
-the `filterMsLevel` function on the result object to restrict the data in the
-object to MS level 1 prior to the conversion.
+outputs of the *old* version of xcms. The newer *xcms* result objects can
+however be converted to an `xcmsSet` object with the `as(object, "xcmsSet")`,
+which does however not support conversion of objects with MS level > 1
+data. Thus we use the `filterMsLevel()` function on the result object to
+restrict the data in the object to MS level 1 prior to the conversion.
 
 ```{r, message = FALSE}
 library(CAMERA)
@@ -337,7 +350,7 @@ With the conversion we lost also the sample group assignment which we have to
 manually add.
 
 ```{r, message = FALSE}
-sampclass(xset) <- s_groups
+sampclass(xset) <- sampleData(processedData)$sample_group
 ```
 
 Create and `xsAnnotate` object named `xsa` extracting the peak table from the 
@@ -383,8 +396,8 @@ xsaC <- groupCorr(xsaF, cor_eic_th = 0.6, pval = 0.05, graphMethod = "hcs",
 This step has seperated our 283 pseudospectra into 2132.
 
 Now we are going to deal with the second big step of CAMERA workflow: annotation
-of isotopes and adducts within pseudospectra-groups. The `findIsotopes`
-annotates isotopes according to the relation between features'
+of isotopes and adducts within pseudospectra-groups. The `findIsotopes()`
+function annotates isotopes according to the relation between features'
 C12/C13. Parameter `intval` allows to specify which feature value should be uses
 (`"into"` for the maximum peak intensity, `"into"` for the integrated peak
 intensity and `"intb"` for the baseline corrected integrated peak intensity,
@@ -400,7 +413,7 @@ xsaFI <- findIsotopes(xsaC, maxcharge = 2, maxiso = 3, minfrac = 0.5,
 Next adducts are identified and annotated based on the m/z differences between
 grouped chromatographic peaks. Setting the correct polarity with parameter
 `polarity` (either `"positive"` or `"negative"` is key). For potential adducts,
-`CAMERA` calculates by default all possible combinations from the standard ions
+*CAMERA* calculates by default all possible combinations from the standard ions
 depending on the ionization mode. Alternatively it is possible to limit to a
 predefined set of adducts with the `rules` parameter.
 
@@ -428,8 +441,8 @@ edgelist <- getEdgelist(xsaFA)
 
 The resulting `data.frame` contains an edge between nodes (i.e. pairwise
 associations between potential adducts/isotopes from the same *correlation
-group* defined by `CAMERA`) in each row. All edges fulfill the criteria from
-`CAMERA` (i.e. representing signal from co-eluting ions with a similar peak
+group* defined by *CAMERA*) in each row. All edges fulfill the criteria from
+*CAMERA* (i.e. representing signal from co-eluting ions with a similar peak
 shape), but only for few the actual adduct annotation could be determined (see
 below).
 
@@ -447,8 +460,8 @@ annotation.
 head(edgelist[edgelist$EdgeType == "MS1 annotation", ])
 ```
 
-In addition we extract per-feature annotations from the `CAMERA` result object
-with the `getFeatureAnnotations` function (also defined in
+In addition we extract per-feature annotations from the *CAMERA* result object
+with the `getFeatureAnnotations()` function (also defined in
 [xcms-gnps-tools](https://github.com/jorainer/xcms-gnps-tools)). These are
 appended to the feature table `dataTable` generated in the previous section.
 

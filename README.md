@@ -1,22 +1,41 @@
 ## Introduction
 
-The Feature-Based Molecular Networking (FBMN) workflow is a computational method that bridges popular mass spectrometry data processing tools for LC-MS/MS and molecular networking analysis on [GNPS](http://gnps.ucsd.edu). The tools supported are: MZmine2, OpenMS, MS-DIAL, MetaboScape, XCMS, and the mzTab-M format.
+The Feature-Based Molecular Networking (FBMN) workflow is a computational method
+that bridges popular mass spectrometry data processing tools for LC-MS/MS and
+molecular networking analysis on [GNPS](http://gnps.ucsd.edu). The tools
+supported are: MZmine2, OpenMS, MS-DIAL, MetaboScape, XCMS, and the mzTab-M
+format.
 
-The main documentation for Feature-Based Molecular Networking with XCMS can be accessed [here](https://ccms-ucsd.github.io/GNPSDocumentation/featurebasedmolecularnetworking-with-xcms3/). See our preprint Nothias, L.F. et al [bioRxiv 812404 (2019)](https://www.biorxiv.org/content/10.1101/812404v1).
+The main documentation for Feature-Based Molecular Networking with XCMS can be
+accessed
+[here](https://ccms-ucsd.github.io/GNPSDocumentation/featurebasedmolecularnetworking-with-xcms3/). See
+also the publication [Nothias, L.F. et al Nat Methods 2020
+Sep;17(9):905-908](https://doi.org/10.1038/s41592-020-0933-6).
 
-This repository contains example scripts in Python and R showing how `XCMS` version >= 3 (XCMS3) can be used for the
-FBMN workflow in GNPS using a subset of samples of the American Gut Project ([MSV000082678](https://massive.ucsd.edu/ProteoSAFe/dataset.jsp?task=de2d18fd91804785bce8c225cc94a444)) and soil bacteria ([MSV000079204](https://massive.ucsd.edu/ProteoSAFe/dataset.jsp?task=d74ca92d9dec4e2883f28506c670e3ca)).
+This repository contains example scripts in Python and R showing how
+[*xcms*](https://bioconductor.org/packages/xcms) (version >= 4) can be used for
+the FBMN workflow in GNPS using a subset of samples of the American Gut Project
+([MSV000082678](https://massive.ucsd.edu/ProteoSAFe/dataset.jsp?task=de2d18fd91804785bce8c225cc94a444))
+and soil bacteria
+([MSV000079204](https://massive.ucsd.edu/ProteoSAFe/dataset.jsp?task=d74ca92d9dec4e2883f28506c670e3ca)).
+
+Note: this is an updated version of the workflow to use the newer result objects
+and more efficient mass spectrometry (MS) data infrastructure introduced with
+*xcms* version 4. For the version with *xcms* < 4 see
+[here](https://github.com/DorresteinLaboratory/XCMS3_FeatureBasedMN/tree/1e6f0f36cd9a24eb2ad2b126ad45083fcbde0a72).
 
 ### Installation of the XCMS-GNPS workflow for FBMN
 
-Install the latest version of XCMS3 (version >= 3.4) from Bioconductor in R
-with:
+Install R version >= 4.5. Install the latest version of *xcms* from Bioconductor
+in R with:
 
 ```
 install("BiocManager")
 BiocManager::install("xcms")
 ```
-For more information, also refer to the [xcms Bioconductor package](https://www.bioconductor.org/packages/release/bioc/html/xcms.html).
+
+For more information, also refer to the [xcms Bioconductor
+package](https://www.bioconductor.org/packages/release/bioc/html/xcms.html).
 
 For utility functions specific to this workflow refer to the Github repository:
 [https://github.com/jorainer/xcms-gnps-tools](https://github.com/jorainer/xcms-gnps-tools).
@@ -25,7 +44,8 @@ For utility functions specific to this workflow refer to the Github repository:
 
 This work builds on the efforts of our many colleagues, please cite their work:
 
-Nothias, L.F. et al [Feature-based Molecular Networking in the GNPS Analysis Environment](https://www.biorxiv.org/content/10.1101/812404v1) bioRxiv 812404 (2019).
+[Nothias, L.F. et al Nat Methods 2020
+Sep;17(9):905-908](https://doi.org/10.1038/s41592-020-0933-6)
 
 [https://github.com/sneumann/xcms](https://github.com/sneumann/xcms)
 
@@ -38,9 +58,12 @@ mass spectrometry data for metabolite profiling using nonlinear peak alignment, 
 
 ### Running Feature Based Molecular Networking on GNPS
 
-The main documentation for Feature-Based Molecular Networking with GNPS can be accessed [here](https://ccms-ucsd.github.io/GNPSDocumentation/featurebasedmolecularnetworking/).
+The main documentation for Feature-Based Molecular Networking with GNPS can be
+accessed
+[here](https://ccms-ucsd.github.io/GNPSDocumentation/featurebasedmolecularnetworking/).
 
 ### Contributions
 
-The XCMS-GNPS integration was developed by Johannes Rainer and Michael Witting, in coordination with Louis-Félix Nothias and Daniel Petras.
-This tutorial was prepared by Madeleine Ernst and Ricardo da Silva.
+The XCMS-GNPS integration was developed by Johannes Rainer and Michael Witting,
+in coordination with Louis-Félix Nothias and Daniel Petras. This tutorial was
+prepared by Madeleine Ernst and Ricardo da Silva.
